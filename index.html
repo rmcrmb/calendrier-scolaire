@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <title>Calendrier scolaire</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<meta name="color-scheme" content="light only">
 <style>
+  html, body { background: #ffffff !important; }
   :root {
     --accent: #84000d;
     --row-height: 130px;
@@ -16,7 +18,17 @@
   * { box-sizing: border-box; }
   body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; padding: 12px; color: #222; }
   header { display: flex; align-items: center; gap: 16px; margin-bottom: 10px; flex-wrap: wrap; }
-  #logo-wrap { position: relative; cursor: pointer; }
+  #logo-wrap {
+    position: relative; cursor: pointer;
+    min-width: 90px; min-height: 56px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #logo-placeholder {
+    border: 2px dashed #bbb; border-radius: 6px; color: #888;
+    font-size: 12px; padding: 10px 14px; text-align: center;
+    line-height: 1.3; white-space: nowrap;
+  }
+  #logo-wrap:hover #logo-placeholder { border-color: var(--accent); color: var(--accent); }
   #logo-img { height: 56px; max-width: 160px; object-fit: contain; border: 1px dashed transparent; }
   #logo-wrap:hover #logo-img { border-color: #aaa; }
   #logo-input { display: none; }
@@ -48,6 +60,7 @@
   table.calendar { width: 100%; border-collapse: collapse; table-layout: fixed; }
   table.calendar th { background: var(--accent); color: #fff; padding: 6px; font-size: 13px; }
   table.calendar td {
+    background: #fff;
     border: 1px solid #ccc; vertical-align: top; height: var(--row-height);
     padding: 4px; font-size: 12px; overflow: hidden;
   }
@@ -65,8 +78,8 @@
 
   table.annuelle { width: 100%; border-collapse: collapse; table-layout: fixed; }
   table.annuelle th { background: var(--accent); color: #fff; padding: 5px; font-size: 12px; position: sticky; top: 0; }
-  table.annuelle td { border: 1px solid #ccc; font-size: 10px; padding: 2px 3px; vertical-align: top; height: var(--row-height-annee); overflow: hidden; }
-  table.annuelle td.col-jour { font-weight: bold; text-align: center; background: #f2f2f2; position: sticky; left: 0; }
+  table.annuelle td { background: #fff; border: 1px solid #ccc; font-size: 10px; padding: 2px 3px; vertical-align: top; height: var(--row-height-annee); overflow: hidden; }
+  table.annuelle td.col-jour { font-weight: bold; text-align: center; vertical-align: middle; background: #f2f2f2; position: sticky; left: 0; }
   table.annuelle td.weekend { background: var(--gris-weekend); }
   table.annuelle td.vacances { background: var(--gris-vacances); }
   table.annuelle td.aujourdhui { background: var(--jour-actuel); }
@@ -96,6 +109,7 @@
 <header>
   <div id="logo-wrap" title="Cliquer pour changer le logo">
     <img id="logo-img" src="" alt="Logo" style="display:none;">
+    <div id="logo-placeholder">🖼️<br>Ajouter<br>un logo</div>
     <input type="file" id="logo-input" accept="image/*">
   </div>
   <h1 id="titre-annee">Calendrier pédagogique — Année scolaire 2026-2027</h1>
@@ -201,7 +215,7 @@ grist.ready({
     { name: "ToutelaJournee", title: "Toute la journée", optional: true },
     { name: "Categorie", title: "Catégorie d'action", optional: true }
   ],
-  requiredAccess: "read table"
+  requiredAccess: "full"
 });
 
 grist.onRecords(function (data, mappings) {
@@ -225,10 +239,6 @@ const colorPicker = document.getElementById("color-picker");
 const zoneSelect = document.getElementById("zone-select");
 
 grist.onOptions(function (options) {
-  if (options && options.logo) {
-    logoImg.src = options.logo;
-    logoImg.style.display = "block";
-  }
   if (options && options.accentColor) {
     document.documentElement.style.setProperty("--accent", options.accentColor);
     colorPicker.value = options.accentColor;
@@ -246,17 +256,66 @@ grist.onOptions(function (options) {
 });
 
 document.getElementById("logo-wrap").addEventListener("click", () => logoInput.click());
+
+// ---------- Logo : stocké comme pièce jointe native Grist (table Parametres_Calendrier) ----------
+const TABLE_PARAMETRES = "Parametres_Calendrier";
+const COLONNE_LOGO = "Logo";
+
+async function chargerLogoNatif() {
+  try {
+    const data = await grist.docApi.fetchTable(TABLE_PARAMETRES);
+    if (!data.id || !data.id.length) return; // table vide : pas encore de ligne
+    const logoCell = data[COLONNE_LOGO] ? data[COLONNE_LOGO][0] : null;
+    // Une cellule Attachment renvoie une liste d'identifiants, ex: [12]
+    if (!logoCell || !logoCell.length) return;
+    const attachmentId = logoCell[0];
+    const tokenInfo = await grist.docApi.getAccessToken({ readOnly: true });
+    logoImg.src = `${tokenInfo.baseUrl}/attachments/${attachmentId}/download?auth=${tokenInfo.token}`;
+    logoImg.style.display = "block";
+    document.getElementById("logo-placeholder").style.display = "none";
+  } catch (err) {
+    console.warn("Logo non chargé (la table Parametres_Calendrier existe-t-elle ?) :", err);
+  }
+}
+
+async function uploaderLogoNatif(file) {
+  try {
+    const tokenInfo = await grist.docApi.getAccessToken({ readOnly: false });
+    const formData = new FormData();
+    formData.append("upload", file, file.name);
+    const uploadRes = await fetch(`${tokenInfo.baseUrl}/attachments?auth=${tokenInfo.token}`, {
+      method: "POST",
+      body: formData
+    });
+    if (!uploadRes.ok) throw new Error("Échec de l'envoi de la pièce jointe (" + uploadRes.status + ")");
+    const idsRetournes = await uploadRes.json();
+    const attachmentId = idsRetournes[0];
+
+    const data = await grist.docApi.fetchTable(TABLE_PARAMETRES);
+    if (data.id && data.id.length) {
+      const rowId = data.id[0];
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", TABLE_PARAMETRES, rowId, { [COLONNE_LOGO]: ["L", attachmentId] }]
+      ]);
+    } else {
+      await grist.docApi.applyUserActions([
+        ["AddRecord", TABLE_PARAMETRES, null, { [COLONNE_LOGO]: ["L", attachmentId] }]
+      ]);
+    }
+    await chargerLogoNatif();
+  } catch (err) {
+    console.error(err);
+    alert("Impossible d'enregistrer le logo. Vous n'avez peut-être pas les droits de modification sur ce document (accès en lecture seule), ou la table \"" + TABLE_PARAMETRES + "\" n'existe pas encore.");
+  }
+}
+
 logoInput.addEventListener("change", (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async () => {
-    logoImg.src = reader.result;
-    logoImg.style.display = "block";
-    await grist.setOption("logo", reader.result);
-  };
-  reader.readAsDataURL(file);
+  uploaderLogoNatif(file);
 });
+
+chargerLogoNatif();
 
 colorPicker.addEventListener("input", async (e) => {
   document.documentElement.style.setProperty("--accent", e.target.value);
