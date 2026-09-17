@@ -211,7 +211,7 @@ grist.ready({
     { name: "ToutelaJournee", title: "Toute la journée", optional: true },
     { name: "Categorie", title: "Catégorie d'action", optional: true }
   ],
-  requiredAccess: "read table and other document data"
+  requiredAccess: "full"
 });
 
 grist.onRecords(function (data, mappings) {
