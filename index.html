@@ -19,19 +19,16 @@
   body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; padding: 12px; color: #222; }
   header { display: flex; align-items: center; gap: 16px; margin-bottom: 10px; flex-wrap: wrap; }
   #logo-wrap {
-    position: relative; cursor: pointer;
+    position: relative;
     min-width: 90px; min-height: 56px;
     display: flex; align-items: center; justify-content: center;
   }
   #logo-placeholder {
-    border: 2px dashed #bbb; border-radius: 6px; color: #888;
+    border: 2px dashed #ddd; border-radius: 6px; color: #aaa;
     font-size: 12px; padding: 10px 14px; text-align: center;
     line-height: 1.3; white-space: nowrap;
   }
-  #logo-wrap:hover #logo-placeholder { border-color: var(--accent); color: var(--accent); }
   #logo-img { height: 56px; max-width: 160px; object-fit: contain; border: 1px dashed transparent; }
-  #logo-wrap:hover #logo-img { border-color: #aaa; }
-  #logo-input { display: none; }
   #titre-annee { font-size: 20px; font-weight: bold; color: var(--accent); margin: 0; flex-grow: 1; }
   .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .toolbar button {
@@ -97,7 +94,7 @@
 
   @media print {
     @page { size: A3 landscape; margin: 8mm; }
-    .toolbar, #logo-input, #view-switch, #nav button, #source-status { display: none !important; }
+    .toolbar, #view-switch, #nav button, #source-status { display: none !important; }
     body { padding: 0; }
     table.calendar td { height: 150px; }
     table.annuelle td { height: 40px; }
@@ -107,10 +104,9 @@
 <body>
 
 <header>
-  <div id="logo-wrap" title="Cliquer pour changer le logo">
+  <div id="logo-wrap" title="Le logo se gère dans la table Parametres_Calendrier (colonne Logo)">
     <img id="logo-img" src="" alt="Logo" style="display:none;">
-    <div id="logo-placeholder">🖼️<br>Ajouter<br>un logo</div>
-    <input type="file" id="logo-input" accept="image/*">
+    <div id="logo-placeholder">🖼️<br>Pas de logo<br>configuré</div>
   </div>
   <h1 id="titre-annee">Calendrier pédagogique — Année scolaire 2026-2027</h1>
   <div class="toolbar">
@@ -215,7 +211,7 @@ grist.ready({
     { name: "ToutelaJournee", title: "Toute la journée", optional: true },
     { name: "Categorie", title: "Catégorie d'action", optional: true }
   ],
-  requiredAccess: "full"
+  requiredAccess: "read table and other document data"
 });
 
 grist.onRecords(function (data, mappings) {
@@ -232,9 +228,8 @@ grist.onRecords(function (data, mappings) {
   fusionnerRecords();
 });
 
-// ---------- Options partagées du document (logo + couleur + zone) ----------
+// ---------- Options partagées du document (couleur + zone) ----------
 const logoImg = document.getElementById("logo-img");
-const logoInput = document.getElementById("logo-input");
 const colorPicker = document.getElementById("color-picker");
 const zoneSelect = document.getElementById("zone-select");
 
@@ -255,9 +250,10 @@ grist.onOptions(function (options) {
   chargerDonneesOfficielles(); // (re)charge selon la zone connue
 });
 
-document.getElementById("logo-wrap").addEventListener("click", () => logoInput.click());
-
-// ---------- Logo : stocké comme pièce jointe native Grist (table Parametres_Calendrier) ----------
+// ---------- Logo : lu depuis la pièce jointe native Grist (table Parametres_Calendrier) ----------
+// Le logo se gère directement dans Grist : ouvrez la table "Parametres_Calendrier"
+// et glissez une image dans la cellule de la colonne "Logo". Le widget la lit ici,
+// en lecture seule — aucune écriture n'est faite depuis le widget lui-même.
 const TABLE_PARAMETRES = "Parametres_Calendrier";
 const COLONNE_LOGO = "Logo";
 
@@ -277,43 +273,6 @@ async function chargerLogoNatif() {
     console.warn("Logo non chargé (la table Parametres_Calendrier existe-t-elle ?) :", err);
   }
 }
-
-async function uploaderLogoNatif(file) {
-  try {
-    const tokenInfo = await grist.docApi.getAccessToken({ readOnly: false });
-    const formData = new FormData();
-    formData.append("upload", file, file.name);
-    const uploadRes = await fetch(`${tokenInfo.baseUrl}/attachments?auth=${tokenInfo.token}`, {
-      method: "POST",
-      body: formData
-    });
-    if (!uploadRes.ok) throw new Error("Échec de l'envoi de la pièce jointe (" + uploadRes.status + ")");
-    const idsRetournes = await uploadRes.json();
-    const attachmentId = idsRetournes[0];
-
-    const data = await grist.docApi.fetchTable(TABLE_PARAMETRES);
-    if (data.id && data.id.length) {
-      const rowId = data.id[0];
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord", TABLE_PARAMETRES, rowId, { [COLONNE_LOGO]: ["L", attachmentId] }]
-      ]);
-    } else {
-      await grist.docApi.applyUserActions([
-        ["AddRecord", TABLE_PARAMETRES, null, { [COLONNE_LOGO]: ["L", attachmentId] }]
-      ]);
-    }
-    await chargerLogoNatif();
-  } catch (err) {
-    console.error(err);
-    alert("Impossible d'enregistrer le logo. Vous n'avez peut-être pas les droits de modification sur ce document (accès en lecture seule), ou la table \"" + TABLE_PARAMETRES + "\" n'existe pas encore.");
-  }
-}
-
-logoInput.addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  uploaderLogoNatif(file);
-});
 
 chargerLogoNatif();
 
