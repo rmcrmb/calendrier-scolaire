@@ -100,43 +100,72 @@
     display: none;
   }
 
-  @media print {
+@media print {
+  /* Force le format A3 paysage */
   @page {
     size: A3 landscape;
     margin: 5mm;
   }
-  body {
-    padding: 0 !important;
-    width: 100% !important;
-    overflow: hidden !important;
-  }
+
+  /* Masque les éléments inutiles */
   .toolbar,
   #view-switch,
-  #nav button,
-  #source-status {
+  #nav,
+  #source-status,
+  header {
     display: none !important;
   }
+
+  /* Optimise la vue mensuelle */
+  body {
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
   table.calendar {
     width: 100% !important;
+    table-layout: fixed !important;
     page-break-inside: avoid !important;
   }
+
   table.calendar td {
     height: 100px !important;
     page-break-inside: avoid !important;
   }
-  table.annuelle {
-    width: 100% !important;
-    page-break-inside: avoid !important;
-  }
-  table.annuelle td {
-    height: 25px !important;
-    page-break-inside: avoid !important;
-  }
+
+  /* Optimise la vue annuelle */
   #vue-annee {
     overflow: visible !important;
+    width: 100% !important;
   }
+
   #annee-scroll {
     overflow: visible !important;
+    width: 100% !important;
+  }
+
+  table.annuelle {
+    width: 100% !important;
+    table-layout: fixed !important;
+    page-break-inside: avoid !important;
+    font-size: 8px !important; /* Réduit la taille du texte pour tout faire tenir */
+  }
+
+  table.annuelle th,
+  table.annuelle td {
+    height: 20px !important;
+    padding: 1px !important;
+    page-break-inside: avoid !important;
+  }
+
+  table.annuelle td.col-jour {
+    width: 40px !important;
+    position: static !important; /* Désactive le sticky pour l'impression */
+  }
+
+  /* Force les cellules à ne pas dépasser */
+  table.annuelle td.na {
+    display: none !important; /* Masque les cellules vides pour gagner de la place */
   }
 }
 </style>
@@ -559,9 +588,10 @@ function renderAnnee() {
 
 // ---------- Impression ----------
 document.getElementById("btn-print").addEventListener("click", () => {
-  // Forcer le style d'impression
-  const style = document.createElement('style');
-  style.innerHTML = `
+  // Injecte des styles spécifiques pour l'impression
+  const printStyle = document.createElement('style');
+  printStyle.id = 'print-styles';
+  printStyle.innerHTML = `
     @page {
       size: A3 landscape !important;
       margin: 5mm !important;
@@ -570,15 +600,28 @@ document.getElementById("btn-print").addEventListener("click", () => {
       width: 100% !important;
       overflow: hidden !important;
     }
+    #vue-annee, #vue-mois {
+      width: 100% !important;
+      overflow: visible !important;
+    }
+    table.annuelle {
+      font-size: 8px !important;
+    }
+    table.annuelle td.na {
+      display: none !important;
+    }
   `;
-  document.head.appendChild(style);
+  document.head.appendChild(printStyle);
 
-  // Imprimer après avoir appliqué les styles
+  // Lance l'impression après un court délai
   setTimeout(() => {
     window.print();
-    // Retirer le style après impression
+    // Retire les styles après impression
     setTimeout(() => {
-      document.head.removeChild(style);
+      const styleToRemove = document.getElementById('print-styles');
+      if (styleToRemove) {
+        document.head.removeChild(styleToRemove);
+      }
     }, 100);
   }, 100);
 });
