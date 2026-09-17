@@ -93,12 +93,44 @@
   }
 
   @media print {
-    @page { size: A3 landscape; margin: 8mm; }
-    .toolbar, #view-switch, #nav button, #source-status { display: none !important; }
-    body { padding: 0; }
-    table.calendar td { height: 150px; }
-    table.annuelle td { height: 40px; }
+  @page {
+    size: A3 landscape;
+    margin: 5mm;
   }
+  body {
+    padding: 0 !important;
+    width: 100% !important;
+    overflow: hidden !important;
+  }
+  .toolbar,
+  #view-switch,
+  #nav button,
+  #source-status {
+    display: none !important;
+  }
+  table.calendar {
+    width: 100% !important;
+    page-break-inside: avoid !important;
+  }
+  table.calendar td {
+    height: 100px !important;
+    page-break-inside: avoid !important;
+  }
+  table.annuelle {
+    width: 100% !important;
+    page-break-inside: avoid !important;
+  }
+  table.annuelle td {
+    height: 25px !important;
+    page-break-inside: avoid !important;
+  }
+  #vue-annee {
+    overflow: visible !important;
+  }
+  #annee-scroll {
+    overflow: visible !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -518,7 +550,30 @@ function renderAnnee() {
 }
 
 // ---------- Impression ----------
-document.getElementById("btn-print").addEventListener("click", () => window.print());
+document.getElementById("btn-print").addEventListener("click", () => {
+  // Forcer le style d'impression
+  const style = document.createElement('style');
+  style.innerHTML = `
+    @page {
+      size: A3 landscape !important;
+      margin: 5mm !important;
+    }
+    body {
+      width: 100% !important;
+      overflow: hidden !important;
+    }
+  `;
+  document.head.appendChild(style);
+
+  // Imprimer après avoir appliqué les styles
+  setTimeout(() => {
+    window.print();
+    // Retirer le style après impression
+    setTimeout(() => {
+      document.head.removeChild(style);
+    }, 100);
+  }, 100);
+});
 
 // ---------- Export iCal (corrigé avec DTSTAMP et gestion des dates) ----------
 function escapeICS(txt) {
