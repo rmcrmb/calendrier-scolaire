@@ -267,44 +267,40 @@ const COLONNE_LOGO = "Logo";
 
 async function chargerLogoNatif() {
   try {
-    // Méthode 1 : Essayer fetchSelectedTable (si une ligne est sélectionnée)
-    let data = await grist.docApi.fetchSelectedTable();
-    if (!data || !data.length) {
-      // Méthode 2 : Essayer fetchTable (toutes les lignes)
-      data = await grist.docApi.fetchTable(TABLE_PARAMETRES);
-      if (!data || !data.id || !data.id.length) {
-        console.warn("Table Parametres_Calendrier vide ou inexistante.");
-        return;
-      }
-      // Convertir en tableau de lignes
-      data = Object.entries(data).map(([col, values]) => {
-        const row = {};
-        for (let i = 0; i < values.length; i++) {
-          row[col] = values[i];
-        }
-        return row;
-      }).filter(row => row[COLONNE_LOGO] && row[COLONNE_LOGO].length);
-      if (!data.length) return;
-    }
-
-    // Prendre la première ligne avec un logo
-    const row = data[0];
-    if (!row[COLONNE_LOGO] || !row[COLONNE_LOGO].length) return;
-
-    const attachmentId = row[COLONNE_LOGO][0];
+    const data = await grist.docApi.fetchTable(TABLE_PARAMETRES);
+    if (!data.id || !data.id.length) return;
+    const logoCell = data[COLONNE_LOGO] ? data[COLONNE_LOGO][0] : null;
+    if (!logoCell || !logoCell.length) return;
+    const attachmentId = logoCell[0];
     const tokenInfo = await grist.docApi.getAccessToken({ readOnly: true });
-    const logoUrl = `${tokenInfo.baseUrl}/attachments/${attachmentId}/download?auth=${tokenInfo.token}`;
-
-    logoImg.src = logoUrl;
+    logoImg.src = `${tokenInfo.baseUrl}/attachments/${attachmentId}/download?auth=${tokenInfo.token}`;
     logoImg.style.display = "block";
     document.getElementById("logo-placeholder").style.display = "none";
   } catch (err) {
-    console.error("Erreur chargement logo :", err);
+    console.warn("Logo non chargé (la table Parametres_Calendrier existe-t-elle ?) :", err);
   }
 }
 
-// Appel initial (sans attendre grist.ready pour éviter les conflits)
 chargerLogoNatif();
+
+colorPicker.addEventListener("input", async (e) => {
+  document.documentElement.style.setProperty("--accent", e.target.value);
+  await grist.setOption("accentColor", e.target.value);
+});
+
+zoneSelect.addEventListener("change", async (e) => {
+  await grist.setOption("zone", e.target.value);
+  chargerDonneesOfficielles();
+});
+
+document.getElementById("btn-toggle-weekend").addEventListener("click", async () => {
+  masquerWeekend = !masquerWeekend;
+  document.getElementById("btn-toggle-weekend").textContent =
+    masquerWeekend ? "✅ Afficher les week-ends" : "🚫 Masquer les week-ends";
+  document.querySelector("table.calendar").classList.toggle("sans-weekend", masquerWeekend);
+  await grist.setOption("masquerWeekend", masquerWeekend);
+});
+
 // ---------- Chargement des vacances scolaires + jours fériés officiels ----------
 async function chargerDonneesOfficielles() {
   const statusEl = document.getElementById("source-status");
@@ -533,77 +529,27 @@ function renderAnnee() {
 // ---------- Impression ----------
 document.getElementById("btn-print").addEventListener("click", () => window.print());
 
-// ---------- Export iCal (corrigé avec DTSTAMP et gestion des dates) ----------
+// ---------- Export iCal (corrigé avec DTSTAMP) ----------
 function escapeICS(txt) {
-  return String(txt)
-    .replace(/([,;:\\])/g, "\\$1")  // Échappe les caractères spéciaux
-    .replace(/\n/g, "\\n");
+  return String(txt).replace(/([,;])/g, "\\$1").replace(/\n/g, "\\n");
 }
 
-function formatDateForICS(date, allDay) {
-  const pad = (n) => String(n).padStart(2, "0");
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-
+function formatDateICS(d, allDay) {
+  const pad = n => String(n).padStart(2, "0");
   if (allDay) {
-    return `${year}${month}${day}`;  // Format DATE (AAAAAAMMJJ)
-  } else {
-    const hours = pad(date.getHours());
-    const minutes = pad(date.getMinutes());
-    return `${year}${month}${day}T${hours}${minutes}00`;  // Format DATE-TIME (AAAAAAMMJJTHHMMSS)
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
   }
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
 }
 
-document.getElementById("btn-ical").addEventListener("click", async () => {
-  const lines = [
+document.getElementById("btn-ical").addEventListener("click", () => {
+  const lignes = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//Calendrier pedagogique//FR",
-    "CALSCALE:GREGORIAN",
-    `DTSTAMP:${formatDateForICS(new Date(), false)}Z`,  // DTSTAMP au niveau du calendrier
+    "CALSCALE:GREGORIAN"
   ];
 
-  // Filtrer les événements valides (avec debut et fin)
-  const validRecords = records.filter(r => r.debut && r.fin && r.debut <= r.fin);
-
-  for (const [index, r] of validRecords.entries()) {
-    lines.push("BEGIN:VEVENT");
-    lines.push(`DTSTAMP:${formatDateForICS(new Date(), false)}Z`);  // DTSTAMP pour chaque événement
-    lines.push(`UID:${Date.now()}-${index}@calendrier-pedagogique`);
-
-    if (r.jourEntier) {
-      // Pour les événements toute la journée, DTEND = DTSTART + 1 jour
-      const startDate = formatDateForICS(r.debut, true);
-      const endDate = new Date(r.fin);
-      endDate.setDate(endDate.getDate() + 1);  // Ajouter 1 jour pour DTEND
-      lines.push(`DTSTART;VALUE=DATE:${startDate}`);
-      lines.push(`DTEND;VALUE=DATE:${formatDateForICS(endDate, true)}`);
-    } else {
-      // Pour les événements avec heure, utiliser le format DATE-TIME
-      lines.push(`DTSTART:${formatDateForICS(r.debut, false)}`);
-      lines.push(`DTEND:${formatDateForICS(r.fin, false)}`);
-    }
-
-    lines.push(`SUMMARY:${escapeICS(r.titre)}`);
-    if (r.description) lines.push(`DESCRIPTION:${escapeICS(r.description)}`);
-    if (r.categorie) lines.push(`CATEGORIES:${escapeICS(r.categorie)}`);
-    lines.push("END:VEVENT");
-  }
-
-  lines.push("END:VCALENDAR");
-
-  // Générer le fichier
-  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "calendrier-pedagogique-2026-2027.ics";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-});
   // Ajout de DTSTAMP pour chaque événement (obligatoire selon RFC 5545)
   const now = new Date();
   const dtStamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}T${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}00Z`;
