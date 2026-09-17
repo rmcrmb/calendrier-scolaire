@@ -267,40 +267,47 @@ const COLONNE_LOGO = "Logo";
 
 async function chargerLogoNatif() {
   try {
-    const data = await grist.docApi.fetchTable(TABLE_PARAMETRES);
-    if (!data.id || !data.id.length) return;
-    const logoCell = data[COLONNE_LOGO] ? data[COLONNE_LOGO][0] : null;
-    if (!logoCell || !logoCell.length) return;
-    const attachmentId = logoCell[0];
+    // Récupérer les données de la table
+    const data = await grist.docApi.fetchSelectedTable();
+    if (!data || !data.length) {
+      console.warn("Aucune ligne sélectionnée dans la table Parametres_Calendrier.");
+      return;
+    }
+
+    // Vérifier si la colonne Logo existe et contient une pièce jointe
+    const row = data[0]; // On prend la première ligne
+    if (!row || !row[COLONNE_LOGO] || !row[COLONNE_LOGO].length) {
+      console.warn("Aucun logo trouvé dans la colonne " + COLONNE_LOGO);
+      return;
+    }
+
+    // Récupérer l'ID de la pièce jointe (Grist stocke les attachments sous forme de liste)
+    const attachmentId = row[COLONNE_LOGO][0]; // Premier attachment
+    if (!attachmentId) {
+      console.warn("ID de pièce jointe invalide.");
+      return;
+    }
+
+    // Récupérer le token d'accès
     const tokenInfo = await grist.docApi.getAccessToken({ readOnly: true });
-    logoImg.src = `${tokenInfo.baseUrl}/attachments/${attachmentId}/download?auth=${tokenInfo.token}`;
+    if (!tokenInfo || !tokenInfo.token) {
+      console.warn("Impossible de récupérer le token d'accès.");
+      return;
+    }
+
+    // Construire l'URL de l'image
+    const logoUrl = `${tokenInfo.baseUrl}/attachments/${attachmentId}/download?auth=${tokenInfo.token}`;
+
+    // Mettre à jour l'affichage
+    logoImg.src = logoUrl;
     logoImg.style.display = "block";
     document.getElementById("logo-placeholder").style.display = "none";
+
+    console.log("Logo chargé avec succès :", logoUrl);
   } catch (err) {
-    console.warn("Logo non chargé (la table Parametres_Calendrier existe-t-elle ?) :", err);
+    console.error("Erreur lors du chargement du logo :", err);
   }
 }
-
-chargerLogoNatif();
-
-colorPicker.addEventListener("input", async (e) => {
-  document.documentElement.style.setProperty("--accent", e.target.value);
-  await grist.setOption("accentColor", e.target.value);
-});
-
-zoneSelect.addEventListener("change", async (e) => {
-  await grist.setOption("zone", e.target.value);
-  chargerDonneesOfficielles();
-});
-
-document.getElementById("btn-toggle-weekend").addEventListener("click", async () => {
-  masquerWeekend = !masquerWeekend;
-  document.getElementById("btn-toggle-weekend").textContent =
-    masquerWeekend ? "✅ Afficher les week-ends" : "🚫 Masquer les week-ends";
-  document.querySelector("table.calendar").classList.toggle("sans-weekend", masquerWeekend);
-  await grist.setOption("masquerWeekend", masquerWeekend);
-});
-
 // ---------- Chargement des vacances scolaires + jours fériés officiels ----------
 async function chargerDonneesOfficielles() {
   const statusEl = document.getElementById("source-status");
