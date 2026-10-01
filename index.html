@@ -30,25 +30,25 @@
   #titre-annee { font-size: 20px; font-weight: bold; color: var(--accent); margin: 0; flex-grow: 1; }
   .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .toolbar button {
-    background: var(--accent); color: #fff; border: none; padding: 8px 14px;
-    border-radius: 6px; font-size: 14px; cursor: pointer;
+    background: var(--accent); color: #000; border: none; padding: 8px 16px;
+    border-radius: 4px; font-size: 14px; cursor: pointer; font-weight: bold;
   }
   .toolbar button:hover { opacity: 0.85; }
   .toolbar label.mini { font-size: 13px; display: flex; align-items: center; gap: 5px; }
-  #color-picker { width: 36px; height: 30px; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; padding: 2px; }
-  #zone-select { padding: 6px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; }
+  #color-picker { width: 36px; height: 30px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; padding: 2px; }
+  #zone-select { padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px; }
 
   #source-status { font-size: 12px; color: #777; margin: -4px 0 10px 0; }
 
   #view-switch { display: flex; gap: 6px; margin-bottom: 10px; }
   #view-switch button {
-    background: #eee; border: 1px solid #ccc; border-radius: 6px;
-    padding: 7px 14px; cursor: pointer; font-size: 14px;
+    background: #eee; border: 1px solid #ccc; border-radius: 4px;
+    padding: 7px 14px; cursor: pointer; font-size: 14px; color: #000; font-weight: bold;
   }
-  #view-switch button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #view-switch button.active { background: var(--accent); color: #000; border-color: var(--accent); }
 
   #nav { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-  #nav button { background: #eee; border: 1px solid #ccc; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 16px; }
+  #nav button { background: #eee; border: 1px solid #ccc; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 16px; color: #000; font-weight: bold; }
   #nav button:disabled { opacity: 0.35; cursor: not-allowed; }
   #mois-label { font-size: 18px; font-weight: 600; text-transform: capitalize; min-width: 220px; text-align: center; }
 
@@ -179,7 +179,7 @@
     <button id="btn-ical">📅 Exporter iCal</button>
   </div>
 </header>
-<div id="source-status">Chargement des vacances et jours fériés officiels…</div>
+<div id="source-status"></div>
 
 <div id="view-switch">
   <button id="btn-view-mois" class="active">Vue mensuelle</button>
@@ -316,7 +316,6 @@ document.getElementById("btn-toggle-weekend").addEventListener("click", async ()
 // ---------- Chargement des vacances scolaires + jours fériés officiels ----------
 async function chargerDonneesOfficielles() {
   const statusEl = document.getElementById("source-status");
-  statusEl.textContent = "Chargement des vacances et jours fériés officiels…";
   const zone = "Zone A"; // Académie de Dijon
   const resultats = [];
 
@@ -342,7 +341,9 @@ async function chargerDonneesOfficielles() {
           titre: r.description || "Vacances scolaires",
           description: "Source : Ministère de l'Éducation nationale",
           debut: new Date(r.start_date),
-          fin: new Date(r.end_date),
+          // Le Ministère indique en end_date le jour de REPRISE des cours (le lundi) :
+          // le dernier jour de vacances est donc la veille.
+          fin: (() => { const f = new Date(r.end_date); f.setDate(f.getDate() - 1); return f; })(),
           jourEntier: true,
           categorie: "Vacances scolaires",
           officiel: true
