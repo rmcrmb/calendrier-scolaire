@@ -29,28 +29,68 @@
   #logo-img { height: 80px !important; max-width: 250px !important; object-fit: contain; }
   #titre-annee { font-size: 20px; font-weight: bold; color: var(--accent); margin: 0; flex-grow: 1; }
   .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .toolbar button {
-    background: var(--accent); color: #000; border: none; padding: 8px 16px;
-    border-radius: 4px; font-size: 14px; cursor: pointer; font-weight: bold;
-  }
-  .toolbar button:hover { opacity: 0.85; }
   .toolbar label.mini { font-size: 13px; display: flex; align-items: center; gap: 5px; }
-  #color-picker { width: 36px; height: 30px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; padding: 2px; }
   #zone-select { padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px; }
 
   #source-status { font-size: 12px; color: #777; margin: -4px 0 10px 0; }
 
   #view-switch { display: flex; gap: 6px; margin-bottom: 10px; }
-  #view-switch button {
-    background: #eee; border: 1px solid #ccc; border-radius: 4px;
-    padding: 7px 14px; cursor: pointer; font-size: 14px; color: #000; font-weight: bold;
-  }
-  #view-switch button.active { background: var(--accent); color: #000; border-color: var(--accent); }
 
   #nav { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-  #nav button { background: #eee; border: 1px solid #ccc; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 16px; color: #000; font-weight: bold; }
-  #nav button:disabled { opacity: 0.35; cursor: not-allowed; }
   #mois-label { font-size: 18px; font-weight: 600; text-transform: capitalize; min-width: 220px; text-align: center; }
+
+  /* Style unique partagé par TOUS les boutons du widget */
+  .toolbar button,
+  #view-switch button,
+  #nav button {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .toolbar button:hover,
+  #view-switch button:hover,
+  #nav button:hover {
+    opacity: 0.85;
+  }
+  #nav button:disabled { opacity: 0.35; cursor: not-allowed; }
+  /* Le bouton de vue actif se distingue par un contour, pas par une couleur différente */
+  #view-switch button:not(.active) { opacity: 0.6; }
+  #view-switch button.active { box-shadow: inset 0 0 0 2px #000; opacity: 1; }
+
+  /* Filtres pré-bac / post-bac en puces cliquables, même famille que les boutons */
+  .filtre-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    background: #eee;
+    color: #000;
+    opacity: 0.6;
+    user-select: none;
+  }
+  /* Coche native masquée visuellement : le clic sur la puce suffit */
+  .filtre-chip input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+  .filtre-chip { position: relative; }
+  .filtre-chip:has(input:checked) {
+    background: var(--accent);
+    box-shadow: inset 0 0 0 2px #000;
+    opacity: 1;
+  }
 
   table.calendar { width: 100%; border-collapse: collapse; table-layout: fixed; }
   table.calendar th { background: var(--accent); color: #fff; padding: 6px; font-size: 13px; }
@@ -179,12 +219,10 @@
   </div>
   <h1 id="titre-annee">Calendrier pédagogique — Année scolaire 2026-2027</h1>
   <div class="toolbar">
-    <label class="mini">Couleur
-      <input type="color" id="color-picker" value="#ffb347" title="Couleur du calendrier">
-    </label>
+    <label class="filtre-chip"><input type="checkbox" id="filtre-prebac-cb" checked> Pré-bac</label>
+    <label class="filtre-chip"><input type="checkbox" id="filtre-postbac-cb" checked> Post-bac</label>
     <button id="btn-toggle-weekend">🚫 Masquer les week-ends</button>
     <button id="btn-print">🖨️ Imprimer</button>
-    <button id="btn-ical">📅 Exporter iCal</button>
   </div>
 </header>
 <div id="source-status"></div>
@@ -276,7 +314,8 @@ grist.ready({
     { name: "DateDebut", title: "Date (début, avec heure)", type: "DateTime" },
     { name: "DateFin", title: "Date de fin (avec heure)", type: "DateTime" },
     { name: "ToutelaJournee", title: "Toute la journée", optional: true },
-    { name: "Categorie", title: "Catégorie d'action", optional: true }
+    { name: "Categorie", title: "Catégorie d'action", optional: true },
+    { name: "Public", title: "Public concerné", optional: true }
   ],
   requiredAccess: "read table"
 });
@@ -290,20 +329,17 @@ grist.onRecords(function (data, mappings) {
     fin: toDate(r.DateFin || r.DateDebut),
     jourEntier: !!r.ToutelaJournee,
     categorie: r.Categorie || "",
+    // ChoiceList : tableau de chaînes, ex. ["Pré-bac"], ["Post-bac"], les deux, ou vide/absent
+    public: Array.isArray(r.Public) ? r.Public : [],
     officiel: false
   }));
   fusionnerRecords();
 });
 
-// ---------- Options partagées du document (couleur + zone) ----------
+// ---------- Options partagées du document ----------
 const logoImg = document.getElementById("logo-img");
-const colorPicker = document.getElementById("color-picker");
 
 grist.onOptions(function (options) {
-  if (options && options.accentColor) {
-    document.documentElement.style.setProperty("--accent", options.accentColor);
-    colorPicker.value = options.accentColor;
-  }
   if (options && typeof options.masquerWeekend === "boolean") {
     masquerWeekend = options.masquerWeekend;
     document.getElementById("btn-toggle-weekend").textContent =
@@ -313,9 +349,13 @@ grist.onOptions(function (options) {
   chargerDonneesOfficielles(); // (re)charge selon la zone connue
 });
 
-colorPicker.addEventListener("input", async (e) => {
-  document.documentElement.style.setProperty("--accent", e.target.value);
-  await grist.setOption("accentColor", e.target.value);
+document.getElementById("filtre-prebac-cb").addEventListener("change", (e) => {
+  filtrePreBac = e.target.checked;
+  renderVueActive();
+});
+document.getElementById("filtre-postbac-cb").addEventListener("change", (e) => {
+  filtrePostBac = e.target.checked;
+  renderVueActive();
 });
 
 document.getElementById("btn-toggle-weekend").addEventListener("click", async () => {
@@ -423,17 +463,44 @@ btnViewAnnee.addEventListener("click", () => {
 });
 function renderVueActive() { if (vueActuelle === "mois") renderMois(); else renderAnnee(); }
 
+// ---------- Filtre pré-bac / post-bac ----------
+let filtrePreBac = true;
+let filtrePostBac = true;
+
+// Un événement sans tag "Public concerné" est considéré général et reste
+// toujours visible, quel que soit l'état des filtres.
+function passeLeFiltre(e) {
+  if (!e.public || e.public.length === 0) return true;
+  if (filtrePreBac && e.public.includes("Pré-bac")) return true;
+  if (filtrePostBac && e.public.includes("Post-bac")) return true;
+  return false;
+}
+
 // ---------- Recherche des événements d'un jour donné ----------
-function evenementsDuJour(d) {
+function formatHeure(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function evenementsDuJour(d, avecHeure) {
   const res = [];
   records.forEach(e => {
+    if (!passeLeFiltre(e)) return;
     const db = jourSeul(e.debut), df = jourSeul(e.fin);
     if (d < db || d > df) return;
     let label = e.titre;
+    let heurePertinente = null; // heure à afficher pour CE jour précis
     if (db.getTime() !== df.getTime()) {
-      if (d.getTime() === db.getTime()) label += " (début)";
-      else if (d.getTime() === df.getTime()) label += " (fin)";
+      if (d.getTime() === db.getTime()) { label += " (début)"; heurePertinente = e.debut; }
+      else if (d.getTime() === df.getTime()) { label += " (fin)"; heurePertinente = e.fin; }
       else return;
+    } else {
+      heurePertinente = e.debut;
+    }
+    // On n'affiche l'heure que si une heure a réellement été saisie
+    // (jourEntier=false) — jamais pour un événement "toute la journée".
+    if (avecHeure && !e.jourEntier) {
+      label += ` (${formatHeure(heurePertinente)})`;
     }
     res.push({ label, jourEntier: e.jourEntier, officiel: e.officiel, titreBrut: e.titre });
   });
@@ -495,7 +562,7 @@ function renderMois() {
       if (jsem >= 5) td.classList.add("weekend");
       if (d.getTime() === aujourdhui.getTime()) td.classList.add("aujourdhui");
 
-      const evts = evenementsDuJour(d);
+      const evts = evenementsDuJour(d, true); // true = afficher l'heure entre parenthèses
       if (estJourVacancesOuFerie(d)) td.classList.add("vacances");
 
       const num = document.createElement("div");
@@ -611,56 +678,6 @@ function formatDateForICS(date, allDay) {
     return `${year}${month}${day}T${hours}${minutes}00`;  // Format DATE-TIME (AAAAAAMMJJTHHMMSS)
   }
 }
-
-document.getElementById("btn-ical").addEventListener("click", async () => {
-  const lines = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Calendrier pedagogique//FR",
-    "CALSCALE:GREGORIAN",
-    `DTSTAMP:${formatDateForICS(new Date(), false)}Z`,  // DTSTAMP au niveau du calendrier
-  ];
-
-  // Filtrer les événements valides (avec debut et fin)
-  const validRecords = records.filter(r => r.debut && r.fin && r.debut <= r.fin);
-
-  for (const [index, r] of validRecords.entries()) {
-    lines.push("BEGIN:VEVENT");
-    lines.push(`DTSTAMP:${formatDateForICS(new Date(), false)}Z`);  // DTSTAMP pour chaque événement
-    lines.push(`UID:${Date.now()}-${index}@calendrier-pedagogique`);
-
-    if (r.jourEntier) {
-      // Pour les événements toute la journée, DTEND = DTSTART + 1 jour
-      const startDate = formatDateForICS(r.debut, true);
-      const endDate = new Date(r.fin);
-      endDate.setDate(endDate.getDate() + 1);  // Ajouter 1 jour pour DTEND
-      lines.push(`DTSTART;VALUE=DATE:${startDate}`);
-      lines.push(`DTEND;VALUE=DATE:${formatDateForICS(endDate, true)}`);
-    } else {
-      // Pour les événements avec heure, utiliser le format DATE-TIME
-      lines.push(`DTSTART:${formatDateForICS(r.debut, false)}`);
-      lines.push(`DTEND:${formatDateForICS(r.fin, false)}`);
-    }
-
-    lines.push(`SUMMARY:${escapeICS(r.titre)}`);
-    if (r.description) lines.push(`DESCRIPTION:${escapeICS(r.description)}`);
-    if (r.categorie) lines.push(`CATEGORIES:${escapeICS(r.categorie)}`);
-    lines.push("END:VEVENT");
-  }
-
-  lines.push("END:VCALENDAR");
-
-  // Générer le fichier
-  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "calendrier-pedagogique-2026-2027.ics";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-});
 
 renderMois();
 chargerDonneesOfficielles(); // premier chargement, avant même le retour d'onOptions
